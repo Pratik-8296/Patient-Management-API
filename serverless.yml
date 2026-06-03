@@ -1,0 +1,281 @@
+service: patient-management-api
+
+frameworkVersion: '3'
+
+useDotenv: true
+
+plugins:
+  - serverless-plugin-typescript
+  - serverless-offline
+
+custom:
+  tableName: ${self:service}-${sls:stage}-patients
+  opensearchDomain: ${env:OPENSEARCH_ENDPOINT, 'http://localhost:9200'}
+
+  # serverless-offline config
+  serverless-offline:
+    httpPort: 3000
+    lambdaPort: 3002
+    host: 0.0.0.0
+    noPrependStageInUrl: true
+
+  # TypeScript plugin config
+  typescript:
+    tsConfigFileLocation: './tsconfig.json'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 29
+  logRetentionInDays: 14
+
+  environment:
+    NODE_ENV: ${sls:stage}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+    DYNAMODB_TABLE_NAME: ${self:custom.tableName}
+    OPENSEARCH_ENDPOINT: ${self:custom.opensearchDomain}
+    COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+    COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
+    COGNITO_REGION: ${opt:region, 'us-east-1'}
+    LOG_LEVEL: ${env:LOG_LEVEL, 'info'}
+
+  iam:
+    role:
+      statements:
+        # DynamoDB permissions
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:BatchGetItem
+            - dynamodb:BatchWriteItem
+            - dynamodb:DescribeTable
+          Resource:
+            - !GetAtt PatientsTable.Arn
+            - !Sub '${PatientsTable.Arn}/index/*'
+        # OpenSearch permissions
+        - Effect: Allow
+          Action:
+            - es:ESHttpGet
+            - es:ESHttpPost
+            - es:ESHttpPut
+            - es:ESHttpDelete
+            - es:ESHttpHead
+          Resource:
+            - !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/*'
+        # CloudWatch Logs
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource:
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+
+  # API Gateway configuration
+  apiGateway:
+    minimumCompressionSize: 1024
+    shouldStartNameWithService: true
+
+functions:
+  api:
+    handler: src/lambda.handler
+    description: Patient Management API Lambda Handler
+    events:
+      - http:
+          path: /health
+          method: get
+          cors: true
+      - http:
+          path: /api-docs
+          method: get
+          cors: true
+      - http:
+          path: /api-docs/{proxy+}
+          method: get
+          cors: true
+      # Patient CRUD routes
+      - http:
+          path: /patients
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId: !Ref ApiGatewayAuthorizer
+      - http:
+          path: /patients
+          method: get
+          cors: true
+      - http:
+          path: /patients/search
+          method: get
+          cors: true
+      - http:
+          path: /patients/{id}
+          method: get
+          cors: true
+      - http:
+          path: /patients/{id}
+          method: put
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId: !Ref ApiGatewayAuthorizer
+      - http:
+          path: /patients/{id}
+          method: delete
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId: !Ref ApiGatewayAuthorizer
+
+resources:
+  Resources:
+    # ─── DynamoDB Table ────────────────────────────────────────────────────────
+    PatientsTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        TableName: ${self:custom.tableName}
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        SSESpecification:
+          SSEEnabled: true
+        AttributeDefinitions:
+          - AttributeName: patientId
+            AttributeType: S
+          - AttributeName: address
+            AttributeType: S
+        KeySchema:
+          - AttributeName: patientId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: AddressIndex
+            KeySchema:
+              - AttributeName: address
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        Tags:
+          - Key: Service
+            Value: ${self:service}
+          - Key: Stage
+            Value: ${sls:stage}
+
+    # ─── Cognito User Pool ─────────────────────────────────────────────────────
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: ${self:service}-${sls:stage}-users
+        AutoVerifiedAttributes:
+          - email
+        UsernameAttributes:
+          - email
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireUppercase: true
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireSymbols: false
+        Schema:
+          - Name: email
+            AttributeDataType: String
+            Required: true
+            Mutable: true
+          - Name: name
+            AttributeDataType: String
+            Required: true
+            Mutable: true
+        AdminCreateUserConfig:
+          AllowAdminCreateUserOnly: false
+        AccountRecoverySetting:
+          RecoveryMechanisms:
+            - Name: verified_email
+              Priority: 1
+        Tags:
+          - Key: Service
+            Value: ${self:service}
+          - Key: Stage
+            Value: ${sls:stage}
+
+    # ─── Cognito User Pool Client ──────────────────────────────────────────────
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: ${self:service}-${sls:stage}-client
+        UserPoolId: !Ref CognitoUserPool
+        ExplicitAuthFlows:
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+          - ALLOW_USER_SRP_AUTH
+        GenerateSecret: false
+        TokenValidityUnits:
+          AccessToken: hours
+          RefreshToken: days
+        AccessTokenValidity: 1
+        RefreshTokenValidity: 30
+        PreventUserExistenceErrors: ENABLED
+
+    # ─── Cognito User Pool Authorizer for API Gateway ──────────────────────────
+    ApiGatewayAuthorizer:
+      Type: AWS::ApiGateway::Authorizer
+      Properties:
+        Name: CognitoAuthorizer
+        RestApiId: !Ref ApiGatewayRestApi
+        Type: COGNITO_USER_POOLS
+        IdentitySource: method.request.header.Authorization
+        ProviderARNs:
+          - !GetAtt CognitoUserPool.Arn
+
+    # ─── API Gateway CORS GatewayResponses ────────────────────────────────────
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_4XX
+        RestApiId: !Ref ApiGatewayRestApi
+
+    GatewayResponseDefault5XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_5XX
+        RestApiId: !Ref ApiGatewayRestApi
+
+  Outputs:
+    ApiGatewayUrl:
+      Description: API Gateway endpoint URL
+      Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${sls:stage}'
+
+    PatientsTableName:
+      Description: DynamoDB table name
+      Value: !Ref PatientsTable
+
+    PatientsTableArn:
+      Description: DynamoDB table ARN
+      Value: !GetAtt PatientsTable.Arn
+
+    CognitoUserPoolId:
+      Description: Cognito User Pool ID (use in COGNITO_USER_POOL_ID env var)
+      Value: !Ref CognitoUserPool
+
+    CognitoUserPoolArn:
+      Description: Cognito User Pool ARN
+      Value: !GetAtt CognitoUserPool.Arn
+
+    CognitoUserPoolClientId:
+      Description: Cognito App Client ID (use in COGNITO_CLIENT_ID env var)
+      Value: !Ref CognitoUserPoolClient

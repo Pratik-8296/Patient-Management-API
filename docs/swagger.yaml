@@ -1,0 +1,544 @@
+openapi: 3.0.3
+info:
+  title: Patient Management API
+  description: |
+    A production-grade Serverless Patient Management API built with:
+    - **Node.js 20+** & **TypeScript** (strict mode)
+    - **Express.js** on **AWS Lambda** via **API Gateway**
+    - **DynamoDB** (single-table design with GSI)
+    - **OpenSearch** for full-text condition search
+    - **Cognito** JWT authentication
+
+    ## Authentication
+    Protected endpoints require a valid Cognito access token passed as:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+
+    ## Standard Response Format
+    All responses follow this structure:
+    ```json
+    {
+      "success": true | false,
+      "data": {},
+      "message": "string",
+      "errors": [],
+      "meta": {}
+    }
+    ```
+  version: '1.0.0'
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development (serverless-offline)
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com/{stage}
+    description: AWS API Gateway
+    variables:
+      apiId:
+        default: xxxxxxxxxx
+      region:
+        default: us-east-1
+      stage:
+        default: dev
+        enum: [dev, staging, prod]
+
+tags:
+  - name: Health
+    description: Health check endpoint
+  - name: Patients
+    description: Patient management operations
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: AWS Cognito access token
+
+  schemas:
+    # ── Patient Model ──────────────────────────────────────────────────────────
+    Patient:
+      type: object
+      required:
+        - patientId
+        - name
+        - address
+        - conditions
+        - allergies
+        - createdAt
+        - updatedAt
+      properties:
+        patientId:
+          type: string
+          format: uuid
+          description: Unique patient identifier (UUID v4)
+          example: '123e4567-e89b-12d3-a456-426614174000'
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Full name of the patient
+          example: 'John Doe'
+        address:
+          type: string
+          minLength: 5
+          maxLength: 255
+          description: Patient's primary address
+          example: '123 Main St, Springfield, IL 62701'
+        conditions:
+          type: array
+          items:
+            type: string
+          description: List of medical conditions
+          example: ['diabetes', 'hypertension']
+        allergies:
+          type: array
+          items:
+            type: string
+          description: List of known allergies
+          example: ['penicillin', 'sulfa']
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the record was created
+          example: '2024-01-15T10:30:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the record was last updated
+          example: '2024-01-15T10:30:00.000Z'
+
+    CreatePatientRequest:
+      type: object
+      required:
+        - name
+        - address
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: 'John Doe'
+        address:
+          type: string
+          minLength: 5
+          maxLength: 255
+          example: '123 Main St, Springfield, IL 62701'
+        conditions:
+          type: array
+          items:
+            type: string
+          default: []
+          example: ['diabetes', 'hypertension']
+        allergies:
+          type: array
+          items:
+            type: string
+          default: []
+          example: ['penicillin']
+
+    UpdatePatientRequest:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: 'Jane Doe'
+        address:
+          type: string
+          minLength: 5
+          maxLength: 255
+          example: '456 Oak Ave, Chicago, IL 60601'
+        conditions:
+          type: array
+          items:
+            type: string
+          example: ['diabetes', 'asthma']
+        allergies:
+          type: array
+          items:
+            type: string
+          example: ['penicillin', 'latex']
+
+    # ── Response Wrappers ──────────────────────────────────────────────────────
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+        message:
+          type: string
+          example: 'Success'
+        meta:
+          type: object
+
+    PatientResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Patient'
+
+    PatientsListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Patient'
+            meta:
+              type: object
+              properties:
+                count:
+                  type: integer
+                lastEvaluatedKey:
+                  type: object
+                  nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: 'Error message'
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+              code:
+                type: string
+
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            message:
+              example: 'Validation failed'
+
+paths:
+  # ── Health Check ─────────────────────────────────────────────────────────────
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Returns the health status of the service
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  service:
+                    type: string
+                    example: patient-management-api
+                  version:
+                    type: string
+                    example: '1.0.0'
+                  environment:
+                    type: string
+                    example: production
+
+  # ── Patient Endpoints ─────────────────────────────────────────────────────────
+  /patients:
+    post:
+      tags: [Patients]
+      summary: Create a new patient
+      description: Creates a new patient record and indexes it in OpenSearch. **Requires authentication.**
+      operationId: createPatient
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePatientRequest'
+            examples:
+              complete:
+                summary: Complete patient record
+                value:
+                  name: 'John Doe'
+                  address: '123 Main St, Springfield, IL 62701'
+                  conditions: ['diabetes', 'hypertension']
+                  allergies: ['penicillin', 'sulfa']
+              minimal:
+                summary: Minimal required fields
+                value:
+                  name: 'Jane Smith'
+                  address: '456 Oak Ave, Chicago, IL 60601'
+      responses:
+        '201':
+          description: Patient created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          description: Unauthorized — missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags: [Patients]
+      summary: List patients
+      description: Returns a paginated list of patients. Optionally filter by address using the DynamoDB GSI.
+      operationId: listPatients
+      parameters:
+        - in: query
+          name: address
+          schema:
+            type: string
+          description: Filter patients by exact address (uses AddressIndex GSI)
+          example: '123 Main St, Springfield, IL 62701'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of patients to return
+        - in: query
+          name: lastEvaluatedKey
+          schema:
+            type: string
+          description: Base64-encoded pagination cursor from previous response
+      responses:
+        '200':
+          description: Patients retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientsListResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /patients/search:
+    get:
+      tags: [Patients]
+      summary: Search patients by medical condition
+      description: |
+        Searches patient records using OpenSearch full-text search.
+        Supports fuzzy matching on the `conditions` field.
+        Example: `GET /patients/search?condition=diabetes`
+      operationId: searchPatients
+      parameters:
+        - in: query
+          name: condition
+          required: true
+          schema:
+            type: string
+          description: Medical condition to search for (fuzzy matching supported)
+          example: diabetes
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: from
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Patient'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 42
+                      from:
+                        type: integer
+                        example: 0
+                      limit:
+                        type: integer
+                        example: 20
+        '400':
+          description: Missing or invalid condition parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /patients/{id}:
+    get:
+      tags: [Patients]
+      summary: Get a patient by ID
+      description: Retrieves a single patient record by their UUID.
+      operationId: getPatient
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Patient UUID
+          example: '123e4567-e89b-12d3-a456-426614174000'
+      responses:
+        '200':
+          description: Patient found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientResponse'
+        '400':
+          description: Invalid UUID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Patient not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Patients]
+      summary: Update a patient
+      description: Updates one or more fields of a patient record and re-indexes in OpenSearch. **Requires authentication.**
+      operationId: updatePatient
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Patient UUID
+          example: '123e4567-e89b-12d3-a456-426614174000'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePatientRequest'
+            example:
+              name: 'John Smith'
+              conditions: ['diabetes', 'asthma']
+      responses:
+        '200':
+          description: Patient updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Patient not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [Patients]
+      summary: Delete a patient
+      description: Permanently deletes a patient record from DynamoDB and OpenSearch. **Requires authentication.**
+      operationId: deletePatient
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Patient UUID
+          example: '123e4567-e89b-12d3-a456-426614174000'
+      responses:
+        '204':
+          description: Patient deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Patient not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

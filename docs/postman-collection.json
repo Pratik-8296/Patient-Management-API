@@ -1,0 +1,1023 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Patient Management API",
+    "description": "A production-grade Serverless Patient Management API built with Node.js 20+ & TypeScript (strict mode), Express.js on AWS Lambda via API Gateway, DynamoDB (single-table design with GSI), OpenSearch for full-text condition search, and Cognito JWT authentication.\n\n## Authentication\nProtected endpoints require a valid Cognito access token:\n```\nAuthorization: Bearer {{access_token}}\n```\n\n## Standard Response Format\n```json\n{\n  \"success\": true | false,\n  \"data\": {},\n  \"message\": \"string\",\n  \"errors\": [],\n  \"meta\": {}\n}\n```\n\n## Environment Variables\nSet the following collection variables before using:\n- `base_url` — Local: `http://localhost:3000`, AWS: `https://{apiId}.execute-api.{region}.amazonaws.com/{stage}`\n- `access_token` — Cognito JWT access token (required for protected endpoints)\n- `patient_id` — UUID of a patient (auto-set by Create Patient test script)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "Base URL of the API. Change to your AWS API Gateway URL for cloud deployment."
+    },
+    {
+      "key": "access_token",
+      "value": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+      "type": "string",
+      "description": "AWS Cognito JWT access token. Replace with a valid token obtained from Cognito."
+    },
+    {
+      "key": "patient_id",
+      "value": "123e4567-e89b-12d3-a456-426614174000",
+      "type": "string",
+      "description": "UUID of the patient to use in ID-based operations. Auto-populated by the Create Patient request."
+    },
+    {
+      "key": "api_version",
+      "value": "v1",
+      "type": "string",
+      "description": "API version string."
+    },
+    {
+      "key": "aws_region",
+      "value": "us-east-1",
+      "type": "string",
+      "description": "AWS region where the API is deployed."
+    },
+    {
+      "key": "cognito_user_pool_id",
+      "value": "us-east-1_XXXXXXXXX",
+      "type": "string",
+      "description": "Cognito User Pool ID from CloudFormation Output: CognitoUserPoolId"
+    },
+    {
+      "key": "cognito_client_id",
+      "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "type": "string",
+      "description": "Cognito App Client ID from CloudFormation Output: CognitoUserPoolClientId"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "🏥 Health",
+      "description": "Health check endpoint to verify service availability and basic status information.",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Returns the current health status of the Patient Management API service. This endpoint does NOT require authentication and can be used for load balancer health checks, uptime monitoring, or readiness probes.\n\n**No authentication required.**"
+          },
+          "response": [
+            {
+              "name": "200 OK — Service Healthy",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-Content-Type-Options", "value": "nosniff" },
+                { "key": "X-Frame-Options", "value": "DENY" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"status\": \"healthy\",\n  \"timestamp\": \"2024-01-15T10:30:00.000Z\",\n  \"service\": \"patient-management-api\",\n  \"version\": \"1.0.0\",\n  \"environment\": \"production\"\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/health",
+                  "host": ["{{base_url}}"],
+                  "path": ["health"]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👤 Patients",
+      "description": "Full CRUD operations for patient records. Protected endpoints (Create, Update, Delete) require a valid Cognito Bearer token. Read operations (List, Get by ID, Search) are publicly accessible.",
+      "item": [
+        {
+          "name": "Create Patient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json && json.data && json.data.patientId) {",
+                  "    pm.collectionVariables.set('patient_id', json.data.patientId);",
+                  "    console.log('patient_id set to:', json.data.patientId);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"address\": \"123 Main St, Springfield, IL 62701\",\n  \"conditions\": [\"diabetes\", \"hypertension\"],\n  \"allergies\": [\"penicillin\", \"sulfa\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/patients",
+              "host": ["{{base_url}}"],
+              "path": ["patients"]
+            },
+            "description": "Creates a new patient record in DynamoDB and indexes it in OpenSearch for full-text search capabilities.\n\n**Requires authentication** — include a valid Cognito Bearer token.\n\n**Required fields:**\n- `name` (string, 2–100 chars)\n- `address` (string, 5–255 chars)\n\n**Optional fields:**\n- `conditions` (array of strings) — list of medical conditions\n- `allergies` (array of strings) — list of known allergies\n\nThe API auto-generates a UUID `patientId` and sets `createdAt` / `updatedAt` timestamps."
+          },
+          "response": [
+            {
+              "name": "201 Created — Complete Patient",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n    \"name\": \"John Doe\",\n    \"address\": \"123 Main St, Springfield, IL 62701\",\n    \"conditions\": [\"diabetes\", \"hypertension\"],\n    \"allergies\": [\"penicillin\", \"sulfa\"],\n    \"createdAt\": \"2024-01-15T10:30:00.000Z\",\n    \"updatedAt\": \"2024-01-15T10:30:00.000Z\"\n  },\n  \"message\": \"Patient created successfully\"\n}",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Doe\",\n  \"address\": \"123 Main St, Springfield, IL 62701\",\n  \"conditions\": [\"diabetes\", \"hypertension\"],\n  \"allergies\": [\"penicillin\", \"sulfa\"]\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"]
+                }
+              }
+            },
+            {
+              "name": "201 Created — Minimal Fields",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"patientId\": \"987fcdeb-51a2-43f7-b890-123456789abc\",\n    \"name\": \"Jane Smith\",\n    \"address\": \"456 Oak Ave, Chicago, IL 60601\",\n    \"conditions\": [],\n    \"allergies\": [],\n    \"createdAt\": \"2024-01-15T11:00:00.000Z\",\n    \"updatedAt\": \"2024-01-15T11:00:00.000Z\"\n  },\n  \"message\": \"Patient created successfully\"\n}",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Jane Smith\",\n  \"address\": \"456 Oak Ave, Chicago, IL 60601\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"]
+                }
+              }
+            },
+            {
+              "name": "400 Bad Request — Validation Error",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"name\",\n      \"message\": \"\\\"name\\\" is required\",\n      \"code\": \"any.required\"\n    },\n    {\n      \"field\": \"address\",\n      \"message\": \"\\\"address\\\" length must be at least 5 characters long\",\n      \"code\": \"string.min\"\n    }\n  ]\n}",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"address\": \"123\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"]
+                }
+              }
+            },
+            {
+              "name": "401 Unauthorized — Missing/Invalid Token",
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Unauthorized: missing or invalid token\",\n  \"errors\": []\n}",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Doe\",\n  \"address\": \"123 Main St, Springfield, IL 62701\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Patients",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/patients?limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["patients"],
+              "query": [
+                {
+                  "key": "address",
+                  "value": "123 Main St, Springfield, IL 62701",
+                  "description": "Filter patients by exact address (uses AddressIndex DynamoDB GSI). Leave empty to list all patients.",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Maximum number of patients to return (1–100, default 20)."
+                },
+                {
+                  "key": "lastEvaluatedKey",
+                  "value": "eyJwYXRpZW50SWQiOiIxMjNlNDU2Ny1lODliLTEyZDMtYTQ1Ni00MjY2MTQxNzQwMDAifQ==",
+                  "description": "Base64-encoded pagination cursor from the previous response's meta.lastEvaluatedKey. Leave empty for the first page.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Returns a paginated list of all patient records from DynamoDB.\n\n**No authentication required.**\n\n**Query Parameters:**\n- `address` *(optional)* — Filter patients by exact address using the `AddressIndex` GSI\n- `limit` *(optional)* — Number of records per page (1–100, default: 20)\n- `lastEvaluatedKey` *(optional)* — Base64-encoded cursor for pagination (from previous response)\n\n**Pagination:** When the response includes `meta.lastEvaluatedKey`, pass it as the `lastEvaluatedKey` query param to retrieve the next page."
+          },
+          "response": [
+            {
+              "name": "200 OK — All Patients (First Page)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n      \"name\": \"John Doe\",\n      \"address\": \"123 Main St, Springfield, IL 62701\",\n      \"conditions\": [\"diabetes\", \"hypertension\"],\n      \"allergies\": [\"penicillin\", \"sulfa\"],\n      \"createdAt\": \"2024-01-15T10:30:00.000Z\",\n      \"updatedAt\": \"2024-01-15T10:30:00.000Z\"\n    },\n    {\n      \"patientId\": \"987fcdeb-51a2-43f7-b890-123456789abc\",\n      \"name\": \"Jane Smith\",\n      \"address\": \"456 Oak Ave, Chicago, IL 60601\",\n      \"conditions\": [\"asthma\"],\n      \"allergies\": [\"latex\"],\n      \"createdAt\": \"2024-01-15T11:00:00.000Z\",\n      \"updatedAt\": \"2024-01-15T11:00:00.000Z\"\n    },\n    {\n      \"patientId\": \"aabbccdd-eeff-1122-3344-556677889900\",\n      \"name\": \"Robert Johnson\",\n      \"address\": \"789 Pine Rd, Dallas, TX 75201\",\n      \"conditions\": [\"hypertension\", \"obesity\"],\n      \"allergies\": [],\n      \"createdAt\": \"2024-01-16T09:15:00.000Z\",\n      \"updatedAt\": \"2024-01-16T09:15:00.000Z\"\n    }\n  ],\n  \"message\": \"Patients retrieved successfully\",\n  \"meta\": {\n    \"count\": 3,\n    \"lastEvaluatedKey\": null\n  }\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients?limit=20",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"],
+                  "query": [{ "key": "limit", "value": "20" }]
+                }
+              }
+            },
+            {
+              "name": "200 OK — Filtered by Address (GSI)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n      \"name\": \"John Doe\",\n      \"address\": \"123 Main St, Springfield, IL 62701\",\n      \"conditions\": [\"diabetes\", \"hypertension\"],\n      \"allergies\": [\"penicillin\", \"sulfa\"],\n      \"createdAt\": \"2024-01-15T10:30:00.000Z\",\n      \"updatedAt\": \"2024-01-15T10:30:00.000Z\"\n    }\n  ],\n  \"message\": \"Patients retrieved successfully\",\n  \"meta\": {\n    \"count\": 1,\n    \"lastEvaluatedKey\": null\n  }\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients?address=123 Main St, Springfield, IL 62701",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"],
+                  "query": [
+                    { "key": "address", "value": "123 Main St, Springfield, IL 62701" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "200 OK — Paginated Response (Has Next Page)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n      \"name\": \"John Doe\",\n      \"address\": \"123 Main St, Springfield, IL 62701\",\n      \"conditions\": [\"diabetes\"],\n      \"allergies\": [\"penicillin\"],\n      \"createdAt\": \"2024-01-15T10:30:00.000Z\",\n      \"updatedAt\": \"2024-01-15T10:30:00.000Z\"\n    }\n  ],\n  \"message\": \"Patients retrieved successfully\",\n  \"meta\": {\n    \"count\": 1,\n    \"lastEvaluatedKey\": {\n      \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\"\n    }\n  }\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients?limit=1",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"],
+                  "query": [{ "key": "limit", "value": "1" }]
+                }
+              }
+            },
+            {
+              "name": "400 Bad Request — Invalid Query Parameters",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"limit\",\n      \"message\": \"\\\"limit\\\" must be less than or equal to 100\",\n      \"code\": \"number.max\"\n    }\n  ]\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients?limit=500",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"],
+                  "query": [{ "key": "limit", "value": "500" }]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Patients by Condition",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/patients/search?condition=diabetes&limit=20&from=0",
+              "host": ["{{base_url}}"],
+              "path": ["patients", "search"],
+              "query": [
+                {
+                  "key": "condition",
+                  "value": "diabetes",
+                  "description": "Medical condition to search for. Supports fuzzy matching via OpenSearch. REQUIRED."
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Maximum number of results to return (1–100, default 20)."
+                },
+                {
+                  "key": "from",
+                  "value": "0",
+                  "description": "Offset for pagination (0-based, default 0)."
+                }
+              ]
+            },
+            "description": "Searches patient records using OpenSearch full-text search on the `conditions` field. Supports **fuzzy matching**, meaning slight misspellings (e.g. `diabets`) will still return relevant results.\n\n**No authentication required.**\n\n**Query Parameters:**\n- `condition` *(required)* — The medical condition to search for\n- `limit` *(optional)* — Number of results per page (1–100, default: 20)\n- `from` *(optional)* — Pagination offset (default: 0)\n\n**Note:** The `/search` route is declared before `/:id` in the router to prevent route conflicts."
+          },
+          "response": [
+            {
+              "name": "200 OK — Matching Patients Found",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n      \"name\": \"John Doe\",\n      \"address\": \"123 Main St, Springfield, IL 62701\",\n      \"conditions\": [\"diabetes\", \"hypertension\"],\n      \"allergies\": [\"penicillin\", \"sulfa\"],\n      \"createdAt\": \"2024-01-15T10:30:00.000Z\",\n      \"updatedAt\": \"2024-01-15T10:30:00.000Z\"\n    },\n    {\n      \"patientId\": \"11223344-5566-7788-99aa-bbccddeeff00\",\n      \"name\": \"Alice Brown\",\n      \"address\": \"321 Elm St, Boston, MA 02101\",\n      \"conditions\": [\"diabetes\", \"chronic kidney disease\"],\n      \"allergies\": [\"aspirin\"],\n      \"createdAt\": \"2024-01-10T08:00:00.000Z\",\n      \"updatedAt\": \"2024-01-14T12:30:00.000Z\"\n    }\n  ],\n  \"meta\": {\n    \"total\": 42,\n    \"from\": 0,\n    \"limit\": 20\n  }\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/search?condition=diabetes&limit=20&from=0",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "search"],
+                  "query": [
+                    { "key": "condition", "value": "diabetes" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "from", "value": "0" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "200 OK — No Patients Found",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [],\n  \"meta\": {\n    \"total\": 0,\n    \"from\": 0,\n    \"limit\": 20\n  }\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/search?condition=unknownconditionxyz",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "search"],
+                  "query": [
+                    { "key": "condition", "value": "unknownconditionxyz" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "200 OK — Paginated Search (Second Page)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"patientId\": \"aabbccdd-1122-3344-5566-778899aabbcc\",\n      \"name\": \"Michael Scott\",\n      \"address\": \"1725 Slough Ave, Scranton, PA 18505\",\n      \"conditions\": [\"hypertension\", \"diabetes type 2\"],\n      \"allergies\": [],\n      \"createdAt\": \"2024-01-12T14:00:00.000Z\",\n      \"updatedAt\": \"2024-01-13T09:00:00.000Z\"\n    }\n  ],\n  \"meta\": {\n    \"total\": 42,\n    \"from\": 20,\n    \"limit\": 20\n  }\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/search?condition=diabetes&limit=20&from=20",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "search"],
+                  "query": [
+                    { "key": "condition", "value": "diabetes" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "from", "value": "20" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "400 Bad Request — Missing condition Parameter",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"condition\",\n      \"message\": \"\\\"condition\\\" is required\",\n      \"code\": \"any.required\"\n    }\n  ]\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/search",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "search"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Patient by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/patients/{{patient_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["patients", "{{patient_id}}"]
+            },
+            "description": "Retrieves a single patient record by their UUID from DynamoDB.\n\n**No authentication required.**\n\n**Path Parameters:**\n- `id` *(required)* — UUID v4 of the patient (e.g. `123e4567-e89b-12d3-a456-426614174000`)\n\nReturns `404` if the patient does not exist, or `400` if the provided ID is not a valid UUID format."
+          },
+          "response": [
+            {
+              "name": "200 OK — Patient Found",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n    \"name\": \"John Doe\",\n    \"address\": \"123 Main St, Springfield, IL 62701\",\n    \"conditions\": [\"diabetes\", \"hypertension\"],\n    \"allergies\": [\"penicillin\", \"sulfa\"],\n    \"createdAt\": \"2024-01-15T10:30:00.000Z\",\n    \"updatedAt\": \"2024-01-15T10:30:00.000Z\"\n  },\n  \"message\": \"Patient retrieved successfully\"\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/{{patient_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "{{patient_id}}"]
+                }
+              }
+            },
+            {
+              "name": "400 Bad Request — Invalid UUID Format",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"id\",\n      \"message\": \"\\\"id\\\" must be a valid GUID\",\n      \"code\": \"string.guid\"\n    }\n  ]\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/not-a-valid-uuid",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "not-a-valid-uuid"]
+                }
+              }
+            },
+            {
+              "name": "404 Not Found — Patient Does Not Exist",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Patient not found\",\n  \"errors\": []\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/00000000-0000-0000-0000-000000000000",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "00000000-0000-0000-0000-000000000000"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Patient",
+          "request": {
+            "method": "PUT",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Smith\",\n  \"conditions\": [\"diabetes\", \"asthma\"],\n  \"allergies\": [\"penicillin\", \"latex\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/patients/{{patient_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["patients", "{{patient_id}}"]
+            },
+            "description": "Updates one or more fields of an existing patient record in DynamoDB and re-indexes the updated record in OpenSearch.\n\n**Requires authentication** — include a valid Cognito Bearer token.\n\n**Path Parameters:**\n- `id` *(required)* — UUID v4 of the patient to update\n\n**Request Body** (all fields optional, but at least one must be provided):\n- `name` (string, 2–100 chars)\n- `address` (string, 5–255 chars)\n- `conditions` (array of strings)\n- `allergies` (array of strings)\n\nThe `updatedAt` timestamp is automatically updated. The `patientId`, `createdAt` fields cannot be modified."
+          },
+          "response": [
+            {
+              "name": "200 OK — Patient Updated",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n    \"name\": \"John Smith\",\n    \"address\": \"123 Main St, Springfield, IL 62701\",\n    \"conditions\": [\"diabetes\", \"asthma\"],\n    \"allergies\": [\"penicillin\", \"latex\"],\n    \"createdAt\": \"2024-01-15T10:30:00.000Z\",\n    \"updatedAt\": \"2024-01-15T15:45:00.000Z\"\n  },\n  \"message\": \"Patient updated successfully\"\n}",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Smith\",\n  \"conditions\": [\"diabetes\", \"asthma\"],\n  \"allergies\": [\"penicillin\", \"latex\"]\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients/{{patient_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "{{patient_id}}"]
+                }
+              }
+            },
+            {
+              "name": "200 OK — Address Updated Only",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"patientId\": \"123e4567-e89b-12d3-a456-426614174000\",\n    \"name\": \"John Smith\",\n    \"address\": \"456 Oak Ave, Chicago, IL 60601\",\n    \"conditions\": [\"diabetes\", \"asthma\"],\n    \"allergies\": [\"penicillin\", \"latex\"],\n    \"createdAt\": \"2024-01-15T10:30:00.000Z\",\n    \"updatedAt\": \"2024-01-15T16:00:00.000Z\"\n  },\n  \"message\": \"Patient updated successfully\"\n}",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"address\": \"456 Oak Ave, Chicago, IL 60601\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients/{{patient_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "{{patient_id}}"]
+                }
+              }
+            },
+            {
+              "name": "400 Bad Request — Validation Error",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"name\",\n      \"message\": \"\\\"name\\\" length must be at least 2 characters long\",\n      \"code\": \"string.min\"\n    }\n  ]\n}",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"J\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients/{{patient_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "{{patient_id}}"]
+                }
+              }
+            },
+            {
+              "name": "401 Unauthorized",
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Unauthorized: missing or invalid token\",\n  \"errors\": []\n}",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Smith\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients/{{patient_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "{{patient_id}}"]
+                }
+              }
+            },
+            {
+              "name": "404 Not Found — Patient Does Not Exist",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Patient not found\",\n  \"errors\": []\n}",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Smith\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients/00000000-0000-0000-0000-000000000000",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "00000000-0000-0000-0000-000000000000"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Patient",
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/patients/{{patient_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["patients", "{{patient_id}}"]
+            },
+            "description": "Permanently deletes a patient record from both DynamoDB and OpenSearch index. This action is **irreversible**.\n\n**Requires authentication** — include a valid Cognito Bearer token.\n\n**Path Parameters:**\n- `id` *(required)* — UUID v4 of the patient to delete\n\nReturns `204 No Content` on success (no response body). Returns `404` if the patient does not exist."
+          },
+          "response": [
+            {
+              "name": "204 No Content — Patient Deleted",
+              "status": "No Content",
+              "code": 204,
+              "header": [],
+              "body": "",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/patients/{{patient_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "{{patient_id}}"]
+                }
+              }
+            },
+            {
+              "name": "401 Unauthorized",
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Unauthorized: missing or invalid token\",\n  \"errors\": []\n}",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/{{patient_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "{{patient_id}}"]
+                }
+              }
+            },
+            {
+              "name": "404 Not Found — Patient Does Not Exist",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Patient not found\",\n  \"errors\": []\n}",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/patients/00000000-0000-0000-0000-000000000000",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "00000000-0000-0000-0000-000000000000"]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "⚠️ Error Scenarios",
+      "description": "Common error scenarios and edge cases for testing error handling, middleware, and API robustness.",
+      "item": [
+        {
+          "name": "404 — Unknown Route",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/unknown-endpoint",
+              "host": ["{{base_url}}"],
+              "path": ["unknown-endpoint"]
+            },
+            "description": "Tests the global 404 not-found middleware. Any request to an undefined route returns a 404 error response."
+          },
+          "response": [
+            {
+              "name": "404 Not Found — Route Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Route not found: GET /unknown-endpoint\",\n  \"errors\": []\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/unknown-endpoint",
+                  "host": ["{{base_url}}"],
+                  "path": ["unknown-endpoint"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Patient — Empty Body",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/patients",
+              "host": ["{{base_url}}"],
+              "path": ["patients"]
+            },
+            "description": "Tests validation by sending an empty JSON body to the Create Patient endpoint."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request — Empty Body",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"name\",\n      \"message\": \"\\\"name\\\" is required\",\n      \"code\": \"any.required\"\n    },\n    {\n      \"field\": \"address\",\n      \"message\": \"\\\"address\\\" is required\",\n      \"code\": \"any.required\"\n    }\n  ]\n}",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{access_token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/patients",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Patient — Invalid UUID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/patients/not-a-uuid",
+              "host": ["{{base_url}}"],
+              "path": ["patients", "not-a-uuid"]
+            },
+            "description": "Tests UUID validation by providing a non-UUID string as the patient ID."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request — Invalid UUID",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"id\",\n      \"message\": \"\\\"id\\\" must be a valid GUID\",\n      \"code\": \"string.guid\"\n    }\n  ]\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/not-a-uuid",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "not-a-uuid"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search — Missing condition Param",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/patients/search",
+              "host": ["{{base_url}}"],
+              "path": ["patients", "search"]
+            },
+            "description": "Tests that the `condition` query parameter is required for the search endpoint."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request — Missing condition",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed\",\n  \"errors\": [\n    {\n      \"field\": \"condition\",\n      \"message\": \"\\\"condition\\\" is required\",\n      \"code\": \"any.required\"\n    }\n  ]\n}",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/patients/search",
+                  "host": ["{{base_url}}"],
+                  "path": ["patients", "search"]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
